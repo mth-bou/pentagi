@@ -61,7 +61,9 @@ type Config struct {
 	// deployment without one every worker would be refused. Operators who run the
 	// separate-daemon arrangement of examples/guides/worker_node.md turn it on to
 	// have that arrangement proven rather than assumed.
-	DockerInsidePolicyTests bool `env:"DOCKER_INSIDE_POLICY_TESTS" envDefault:"false"`
+	DockerInsidePolicyTests bool   `env:"DOCKER_INSIDE_POLICY_TESTS" envDefault:"false"`
+	DockerEgressMode        string `env:"DOCKER_EGRESS_MODE" envDefault:"unrestricted"`
+	DockerRequireRootless   bool   `env:"DOCKER_REQUIRE_ROOTLESS" envDefault:"false"`
 
 	DockerNetwork                string `env:"DOCKER_NETWORK"`
 	DockerPublicIP               string `env:"DOCKER_PUBLIC_IP" envDefault:"127.0.0.1"`
@@ -364,6 +366,9 @@ func NewConfig() (*Config, error) {
 		return nil, err
 	}
 	if err := config.ValidateWorkerLimits(); err != nil {
+		return nil, err
+	}
+	if err := config.ValidateDockerBoundary(); err != nil {
 		return nil, err
 	}
 

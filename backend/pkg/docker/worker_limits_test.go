@@ -12,6 +12,7 @@ import (
 	"pentagi/pkg/database"
 
 	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/client"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -152,6 +153,12 @@ func TestClient_WorkerRejectsDockerPrivilegeEscapesBeforeCreate(t *testing.T) {
 		{name: "dangerous capability", host: container.HostConfig{CapAdd: []string{"SYS_ADMIN"}}},
 		{name: "parent cgroup", host: container.HostConfig{Resources: container.Resources{CgroupParent: "untrusted-parent"}}},
 		{name: "host device", host: container.HostConfig{Resources: container.Resources{Devices: []container.DeviceMapping{{PathOnHost: "/dev/null", PathInContainer: "/dev/probe", CgroupPermissions: "rwm"}}}}},
+		{name: "unmasked kernel paths", host: container.HostConfig{MaskedPaths: []string{}}},
+		{name: "writable kernel paths", host: container.HostConfig{ReadonlyPaths: []string{}}},
+		{name: "tmpfs over proc", host: container.HostConfig{Tmpfs: map[string]string{"/proc": "rw,dev,suid"}}},
+		{name: "runtime annotation", host: container.HostConfig{Annotations: map[string]string{"runtime.setting": "unsafe"}}},
+		{name: "publish all ports", host: container.HostConfig{PublishAllPorts: true}},
+		{name: "unconfined security profile", host: container.HostConfig{SecurityOpt: []string{"seccomp=unconfined"}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, created, err := recordWorkerCreate(t, &tc.host)
@@ -184,4 +191,16 @@ func TestClient_WorkerBudgetIsEnforcedByDocker(t *testing.T) {
 	period, err := strconv.ParseInt(cpu[1], 10, 64)
 	require.NoError(t, err)
 	assert.Equal(t, period*2, quota, "cgroup CPU bandwidth must enforce the two-CPU budget")
+}
+
+func TestClient_WorkerRejectsPrivilegedExecBeforeContactingDaemon(t *testing.T) {
+	contacted := false
+	cli := daemonWith(t, func(_ *http.Request) (*http.Response, error) {
+		contacted = true
+		return statusResponse(http.StatusBadRequest, `{"message":"unexpected daemon call"}`), nil
+	})
+	dc := &dockerClient{client: cli}
+	_, err := dc.ContainerExecCreate(t.Context(), "probe", client.ExecCreateOptions{Privileged: true})
+	require.ErrorContains(t, err, "privileged worker exec is not allowed")
+	require.False(t, contacted)
 }

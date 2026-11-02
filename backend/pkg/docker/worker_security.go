@@ -21,12 +21,14 @@ func applyWorkerSecurity(cfg *config.Config, host *container.HostConfig) error {
 		host.NetworkMode != "" || host.CgroupParent != "" || host.Runtime != "" ||
 		len(host.Devices) != 0 || len(host.DeviceRequests) != 0 || len(host.DeviceCgroupRules) != 0 ||
 		len(host.Binds) != 0 || len(host.Mounts) != 0 || len(host.VolumesFrom) != 0 ||
+		host.MaskedPaths != nil || host.ReadonlyPaths != nil || len(host.Tmpfs) != 0 ||
+		len(host.Annotations) != 0 || len(host.Links) != 0 || host.PublishAllPorts || len(host.PortBindings) != 0 ||
 		len(host.Sysctls) != 0 || host.CPURealtimePeriod != 0 || host.CPURealtimeRuntime != 0 ||
 		(host.OomKillDisable != nil && *host.OomKillDisable) || host.OomScoreAdj < 0 {
 		return fmt.Errorf("unsafe worker host configuration: namespace, device, mount or privilege override")
 	}
 	allowed := workerCapabilities(cfg)
-	if len(host.CapAdd) == 0 {
+	if host.CapAdd == nil {
 		host.CapAdd = allowed
 	}
 	for _, cap := range host.CapAdd {

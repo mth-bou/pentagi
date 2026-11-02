@@ -5,6 +5,23 @@ development branch, not a security-certified distribution.
 
 ## Changes implemented
 
+- The optional [hardened Compose profile](docker-compose.hardened.yml) removes
+  the control service's local Docker socket, requires mTLS to a dedicated rootless
+  worker daemon, and drops the control container's capabilities. Rootless and
+  cgroup-controller requirements fail closed. The profile is tested as a merged
+  configuration; it has not been deployed end-to-end.
+- `DOCKER_EGRESS_MODE=isolated` confines workers to an explicitly provisioned
+  internal bridge with an isolated gateway. It removes raw packet capability,
+  callbacks, external DNS and IPv6; only targets on that bridge remain reachable.
+  The example environment and hardened profile select it. The backend/base
+  Compose compatibility fallback remains `unrestricted`, with a warning.
+- Existing live workers are checked against the current resource, privilege and
+  isolated-network policy before reuse. Incompatible workers are refused with a
+  recreation error; they are not silently deleted or automatically stopped.
+- Ollama chat and embedding requests cannot follow a cross-origin redirect.
+  This prevents a reproduced synthetic-key leak caused by the adapter reattaching
+  credentials after redirect. Authenticated remote HTTP endpoints are rejected.
+  See the [eight remaining module-wide alerts and reachability review](backend/docs/ollama-security.md).
 - Workers have a ceiling of 2 CPUs, 4 GiB RAM, no swap, and 512 processes.
   `DOCKER_WORKER_CPUS`, `DOCKER_WORKER_MEMORY` (bytes) and
   `DOCKER_WORKER_PIDS_LIMIT` adjust the ceilings. Zero selects the bounded default;
@@ -37,6 +54,10 @@ Local-only callback ports prevent remote reverse callbacks until an operator
 selects the appropriate lab interface. They do not filter outbound connections,
 and host networking bypasses port publication controls.
 
+See [the hardening and migration guide](backend/docs/fork-hardening.md) before
+activating isolated egress or the rootless profile. Existing `.env` values and
+running workers do not acquire these protections merely by pulling the branch.
+
 ## Run the fork's code
 
 The upstream `vxcontrol/pentagi` image does **not** contain this fork's Go fixes.
@@ -54,10 +75,11 @@ Review credentials and all auxiliary images before starting the Compose stack.
 ## Validation
 
 Regression tests cover digest substitution, default worker networking, explicit
-operator opt-ins, and default image-selection behavior. Run from `backend/`:
+operator opt-ins, resource enforcement, privilege overrides, worker reuse,
+network confinement and Ollama credential redirects. Run from `backend/`:
 
 ```bash
-go test -race ./pkg/config ./pkg/docker ./pkg/providers
+go test -race ./pkg/config ./pkg/docker ./pkg/providers/... ./pkg/system
 ```
 
 The Docker package also contains daemon integration tests. An unavailable daemon
@@ -76,13 +98,15 @@ container and work volume on completion.
 
 ## Remaining security work
 
-1. Restrict the control service's access to Docker using a dedicated worker host
-   and a narrowly scoped, tested authorization boundary. The main service still
-   holds powerful Docker access in the upstream deployment architecture.
+1. Validate the optional rootless/mTLS deployment end-to-end on the dedicated
+   worker environment. The controller retains full API authority over that
+   dedicated daemon; per-flow API authorization remains future work. The base
+   deployment still mounts the host Docker socket.
 2. Bound the aggregate number of concurrent workers and retained work volumes;
    per-worker cgroup ceilings do not bound the whole deployment or disk usage.
-3. Add an enforceable egress policy separating lab targets, host/LAN services and
-   external model endpoints; prompt-based scope rules are not network controls.
+3. Extend the isolated lab mode with independently enforced per-flow target
+   allow-lists or controlled Internet access when needed. Current confinement
+   uses network membership, not domain/CIDR allow-lists or per-flow isolation.
 4. Complete dependency and container-image remediation with reachability review,
    fresh SBOMs and runtime tests. A scanner's package count is not an exploit count.
 5. Remove predictable bootstrap credentials from manual deployments without
