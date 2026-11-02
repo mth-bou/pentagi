@@ -16,10 +16,10 @@ func NewOllamaHTTPClient(serverURL, apiKey string, original *http.Client) (*http
 	base, err := url.Parse(serverURL)
 	if err != nil || base.Hostname() == "" || (base.Scheme != "http" && base.Scheme != "https") ||
 		base.User != nil || base.RawQuery != "" || base.Fragment != "" || base.Opaque != "" {
-		return nil, fmt.Errorf("Ollama endpoint must be an absolute HTTP(S) URL without credentials, query or fragment")
+		return nil, fmt.Errorf("ollama endpoint must be an absolute HTTP(S) URL without credentials, query or fragment")
 	}
 	if apiKey != "" && !ollamaCredentialsSafe(base) {
-		return nil, fmt.Errorf("Ollama API keys require HTTPS outside loopback")
+		return nil, fmt.Errorf("ollama API keys require HTTPS outside loopback")
 	}
 	if original == nil {
 		original = http.DefaultClient
@@ -32,7 +32,7 @@ func NewOllamaHTTPClient(serverURL, apiKey string, original *http.Client) (*http
 	copyClient.Transport = &ollamaOriginTransport{origin: base, transport: transport}
 	copyClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 		if !sameOllamaOrigin(base, req.URL) {
-			return fmt.Errorf("Ollama redirect outside the configured origin is blocked")
+			return fmt.Errorf("ollama redirect outside the configured origin is blocked")
 		}
 		if len(via) >= 10 {
 			return fmt.Errorf("too many Ollama redirects")
@@ -52,11 +52,11 @@ type ollamaOriginTransport struct {
 
 func (t *ollamaOriginTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if !sameOllamaOrigin(t.origin, req.URL) || req.URL.User != nil {
-		return nil, fmt.Errorf("Ollama request outside the configured origin is blocked")
+		return nil, fmt.Errorf("ollama request outside the configured origin is blocked")
 	}
 	// Also covers credentials added by SDK environment variables or signing.
 	if req.Header.Get("Authorization") != "" && !ollamaCredentialsSafe(req.URL) {
-		return nil, fmt.Errorf("Ollama credentials require HTTPS outside loopback")
+		return nil, fmt.Errorf("ollama credentials require HTTPS outside loopback")
 	}
 	return t.transport.RoundTrip(req)
 }

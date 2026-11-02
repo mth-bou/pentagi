@@ -133,7 +133,7 @@ func GetPrimaryContainerPorts(portsBase int, flowID int64) []int {
 
 func NewDockerClient(ctx context.Context, db database.Querier, cfg *config.Config) (DockerClient, error) {
 	if cfg == nil {
-		return nil, fmt.Errorf("Docker configuration is required")
+		return nil, fmt.Errorf("docker configuration is required")
 	}
 	if err := cfg.ValidateWorkerLimits(); err != nil {
 		return nil, err
