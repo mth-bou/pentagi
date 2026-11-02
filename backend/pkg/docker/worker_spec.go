@@ -16,13 +16,17 @@ import (
 // written and drift afterwards, and the check would then be measuring a
 // container no agent ever runs in.
 func WorkerSpec(cfg *config.Config, image string) (*container.Config, *container.HostConfig) {
+	host := &container.HostConfig{
+		CapDrop: []string{"ALL"},
+		CapAdd:  workerCapabilities(cfg),
+	}
+	// NewConfig validates operator values. RunContainer also rejects an invalid
+	// programmatically constructed config before contacting the daemon.
+	_ = applyWorkerSecurity(cfg, host)
 	return &container.Config{
-			Image:      image,
-			Entrypoint: []string{"tail", "-f", "/dev/null"},
-		}, &container.HostConfig{
-			CapDrop: []string{"ALL"},
-			CapAdd:  workerCapabilities(cfg),
-		}
+		Image:      image,
+		Entrypoint: []string{"tail", "-f", "/dev/null"},
+	}, host
 }
 
 // workerCapabilities is the explicit allow-list that goes with CapDrop: ALL --

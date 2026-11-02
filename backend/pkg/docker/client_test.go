@@ -463,7 +463,7 @@ func TestClient_RunContainer_AppliesSandboxDefaults(t *testing.T) {
 	require.Equal(t, container.RestartPolicyOnFailure, inspect.HostConfig.RestartPolicy.Name)
 	require.Equal(t, 5, inspect.HostConfig.RestartPolicy.MaximumRetryCount)
 	require.NotNil(t, inspect.HostConfig.PidsLimit)
-	require.Equal(t, int64(2048), *inspect.HostConfig.PidsLimit)
+	require.Equal(t, int64(512), *inspect.HostConfig.PidsLimit)
 	require.Equal(t, "json-file", inspect.HostConfig.LogConfig.Type)
 	require.Equal(t, "10m", inspect.HostConfig.LogConfig.Config["max-size"])
 	require.Equal(t, "5", inspect.HostConfig.LogConfig.Config["max-file"])

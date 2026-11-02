@@ -74,6 +74,7 @@ const (
 )
 
 type dockerClient struct {
+	workerConfig         *config.Config
 	db                   database.Querier
 	logger               *logrus.Logger
 	dataDir              string
@@ -131,6 +132,9 @@ func GetPrimaryContainerPorts(portsBase int, flowID int64) []int {
 }
 
 func NewDockerClient(ctx context.Context, db database.Querier, cfg *config.Config) (DockerClient, error) {
+	if err := cfg.ValidateWorkerLimits(); err != nil {
+		return nil, err
+	}
 	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize docker client: %w", err)
@@ -190,6 +194,7 @@ func NewDockerClient(ctx context.Context, db database.Querier, cfg *config.Confi
 	}).Debug("Docker client initialized")
 
 	dockerCli := &dockerClient{
+		workerConfig:         cfg,
 		db:                   db,
 		client:               cli,
 		dataDir:              dataDir,
@@ -249,6 +254,12 @@ func (dc *dockerClient) RunContainer(
 ) (database.Container, error) {
 	if config == nil {
 		return database.Container{}, fmt.Errorf("no config found for container %s", containerName)
+	}
+	if hostConfig == nil {
+		hostConfig = &container.HostConfig{}
+	}
+	if err := applyWorkerSecurity(dc.workerConfig, hostConfig); err != nil {
+		return database.Container{}, err
 	}
 
 	workDir := filepath.Join(dc.dataDir, fmt.Sprintf(containerLocalCwdTemplate, flowID))
@@ -364,20 +375,6 @@ func (dc *dockerClient) RunContainer(
 	hostConfig.Binds = append(hostConfig.Binds, fmt.Sprintf("%s:%s", hostDir, WorkFolderPathInContainer))
 
 	dc.applyWorkerDockerAccess(config, hostConfig)
-
-	// no-new-privileges was evaluated and deliberately not applied: the capability
-	// bounding set in tools.go Prepare already caps what any process can gain, so
-	// it added no protection beyond that (and none against issue #337) while
-	// breaking SUID/SGID privesc testing and sudo/su. See "Capability Management"
-	// in docker.md for the full rationale.
-
-	// Cap fork-bomb / resource-exhaustion risk at a bounded limit.
-	// 2048 pids is generous for most pentest workloads (nmap, hydra, parallel scans).
-	// Callers can override by setting hostConfig.PidsLimit before calling RunContainer.
-	if hostConfig.PidsLimit == nil {
-		pidsLimit := int64(2048)
-		hostConfig.PidsLimit = &pidsLimit
-	}
 
 	hostConfig.LogConfig = container.LogConfig{
 		Type: "json-file",

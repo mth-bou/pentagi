@@ -5,6 +5,17 @@ development branch, not a security-certified distribution.
 
 ## Changes implemented
 
+- Workers have a ceiling of 2 CPUs, 4 GiB RAM, no swap, and 512 processes.
+  `DOCKER_WORKER_CPUS`, `DOCKER_WORKER_MEMORY` (bytes) and
+  `DOCKER_WORKER_PIDS_LIMIT` adjust the ceilings. Zero selects the bounded default;
+  negative, non-finite and out-of-range values fail validation. A caller may
+  tighten these ceilings but cannot raise them through a container specification.
+- `no-new-privileges` is enabled by default. Set
+  `DOCKER_WORKER_ALLOW_PRIVILEGE_ESCALATION=true` only for SUID/sudo lab tests.
+  This does not enable Docker privileged mode. Namespace, device, arbitrary mount,
+  cgroup-parent and unapproved capability overrides are rejected before creation.
+  These checks protect the application creation path; they are not an authorization
+  proxy for someone who already possesses the daemon socket.
 - Digest-pinned image allow-list entries require the exact reference. They no
   longer authorize an arbitrary tag or digest from the same repository.
 - Worker callback ports bind to `127.0.0.1` by default, including when the Docker
@@ -68,7 +79,8 @@ container and work volume on completion.
 1. Restrict the control service's access to Docker using a dedicated worker host
    and a narrowly scoped, tested authorization boundary. The main service still
    holds powerful Docker access in the upstream deployment architecture.
-2. Enforce and test configurable CPU, memory and process budgets per worker.
+2. Bound the aggregate number of concurrent workers and retained work volumes;
+   per-worker cgroup ceilings do not bound the whole deployment or disk usage.
 3. Add an enforceable egress policy separating lab targets, host/LAN services and
    external model endpoints; prompt-based scope rules are not network controls.
 4. Complete dependency and container-image remediation with reachability review,

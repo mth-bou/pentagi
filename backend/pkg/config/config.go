@@ -33,9 +33,13 @@ type Config struct {
 	LicenseKey     string `env:"LICENSE_KEY"`
 
 	// === Container Runtime Configuration ===
-	DockerInside   bool   `env:"DOCKER_INSIDE" envDefault:"false"`
-	DockerNetAdmin bool   `env:"DOCKER_NET_ADMIN" envDefault:"false"`
-	DockerSocket   string `env:"DOCKER_SOCKET"`
+	DockerInside                         bool    `env:"DOCKER_INSIDE" envDefault:"false"`
+	DockerNetAdmin                       bool    `env:"DOCKER_NET_ADMIN" envDefault:"false"`
+	DockerSocket                         string  `env:"DOCKER_SOCKET"`
+	DockerWorkerCPUs                     float64 `env:"DOCKER_WORKER_CPUS" envDefault:"2"`
+	DockerWorkerMemory                   int64   `env:"DOCKER_WORKER_MEMORY" envDefault:"4294967296"`
+	DockerWorkerPidsLimit                int64   `env:"DOCKER_WORKER_PIDS_LIMIT" envDefault:"512"`
+	DockerWorkerAllowPrivilegeEscalation bool    `env:"DOCKER_WORKER_ALLOW_PRIVILEGE_ESCALATION" envDefault:"false"`
 
 	// DOCKER_INSIDE_* describe how a worker container reaches a Docker daemon when
 	// DOCKER_INSIDE is enabled. They mirror the DOCKER_HOST / DOCKER_TLS_VERIFY /
@@ -357,6 +361,9 @@ func NewConfig() (*Config, error) {
 	}
 
 	if err := config.ValidateTenantID(); err != nil {
+		return nil, err
+	}
+	if err := config.ValidateWorkerLimits(); err != nil {
 		return nil, err
 	}
 
