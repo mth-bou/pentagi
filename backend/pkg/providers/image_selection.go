@@ -83,6 +83,10 @@ func sameRepository(image, allowed string) bool {
 	if _, tagged := allowedRef.(reference.Tagged); tagged {
 		return false
 	}
+	// A digest pins reviewed content, not every image in the same repository.
+	if _, pinned := allowedRef.(reference.Digested); pinned {
+		return false
+	}
 
 	parsed, err := reference.ParseNormalizedNamed(image)
 	if err != nil {
