@@ -106,7 +106,9 @@ func TestImageSelection_SkipsModel_OnlyInFixedMode(t *testing.T) {
 	}{
 		{name: "fixed mode", mode: ImageSelectionModeFixed, want: true},
 		{name: "fixed mode written loosely", mode: " Fixed ", want: true},
-		{name: "no mode keeps the model choosing", mode: "", want: false},
+		{name: "no mode keeps the configured image", mode: "", want: true},
+		{name: "model selection is an explicit opt-in", mode: "llm", want: false},
+		{name: "an unknown mode keeps the configured image", mode: "fiixed", want: true},
 	}
 
 	for _, tt := range tests {

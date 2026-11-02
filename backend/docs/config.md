@@ -431,7 +431,7 @@ These settings control how PentAGI interacts with Docker, which is used for term
 | DockerInsidePolicyTests      | `DOCKER_INSIDE_POLICY_TESTS`       | `false`                | Test the sandbox once at startup: the daemon must be separate from PentAGI's and must refuse host-escape requests. Its only effect is whether agents get Docker — a failure turns the sandbox off and PentAGI still starts. Off by default |
 | DockerDefaultImageForTest    | `DOCKER_DEFAULT_IMAGE_FOR_TEST`    | `vxcontrol/kali-linux:test` | Worker the startup test runs in, and the image it pulls into the sandbox |
 | DockerNetwork                | `DOCKER_NETWORK`                   | *(none)*               | Docker network name for bridge mode, or `host` for host network mode. See network modes below. |
-| DockerPublicIP               | `DOCKER_PUBLIC_IP`                 | `0.0.0.0`              | Public IP address for Docker containers' port bindings (bridge mode only) |
+| DockerPublicIP               | `DOCKER_PUBLIC_IP`                 | `127.0.0.1`              | Public IP address for Docker containers' port bindings (bridge mode only) |
 | DockerWorkDir                | `DOCKER_WORK_DIR`                  | *(none)*               | Custom working directory inside Docker containers |
 | DockerDefaultImage           | `DOCKER_DEFAULT_IMAGE`             | `debian:latest`        | Default Docker image for containers when specific images fail |
 | DockerDefaultImageForPentest | `DOCKER_DEFAULT_IMAGE_FOR_PENTEST` | `vxcontrol/kali-linux` | Default Docker image for penetration testing tasks |
@@ -542,7 +542,7 @@ The Docker settings are primarily used in `pkg/docker/client.go` which implement
 
 - **DockerPublicIP**: Defines the IP address to bind container ports to, making services accessible:
   ```go
-  publicIP := cfg.DockerPublicIP
+  publicIP := cfg.WorkerPublicIP()
 
   // Used when setting up port bindings
   hostConfig.PortBindings[natPort] = []nat.PortBinding{

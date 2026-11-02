@@ -153,7 +153,7 @@ func NewDockerClient(ctx context.Context, db database.Querier, cfg *config.Confi
 	inside := cfg.DockerInside
 	logWorkerDaemonIsolation(ctx, cfg, cli)
 	netName := cfg.DockerNetwork
-	publicIP := cfg.DockerPublicIP
+	publicIP := cfg.WorkerPublicIP()
 	defImage := strings.ToLower(cfg.DockerDefaultImage)
 	if defImage == "" {
 		defImage = defaultImage

@@ -60,7 +60,7 @@ type Config struct {
 	DockerInsidePolicyTests bool `env:"DOCKER_INSIDE_POLICY_TESTS" envDefault:"false"`
 
 	DockerNetwork                string `env:"DOCKER_NETWORK"`
-	DockerPublicIP               string `env:"DOCKER_PUBLIC_IP" envDefault:"0.0.0.0"`
+	DockerPublicIP               string `env:"DOCKER_PUBLIC_IP" envDefault:"127.0.0.1"`
 	DockerWorkDir                string `env:"DOCKER_WORK_DIR"`
 	DockerPortsBase              int    `env:"DOCKER_PORTS_BASE" envDefault:"28000"`
 	DockerDefaultImage           string `env:"DOCKER_DEFAULT_IMAGE" envDefault:"debian:latest"`
@@ -70,7 +70,7 @@ type Config struct {
 	// and the image it pulls into the sandbox to prove an agent could. It is a
 	// small image on purpose: the check pays for it on every start.
 	DockerDefaultImageForTest string `env:"DOCKER_DEFAULT_IMAGE_FOR_TEST" envDefault:"vxcontrol/kali-linux:test"`
-	DockerImageSelectionMode  string `env:"DOCKER_IMAGE_SELECTION_MODE" envDefault:"llm"`
+	DockerImageSelectionMode  string `env:"DOCKER_IMAGE_SELECTION_MODE" envDefault:"fixed"`
 	DockerAllowedImages       string `env:"DOCKER_ALLOWED_IMAGES"`
 	LLMFallbackProvider       string `env:"LLM_FALLBACK_PROVIDER"`
 	TerminalToolTimeout       int    `env:"TERMINAL_TOOL_TIMEOUT" envDefault:"1200"`
@@ -415,7 +415,7 @@ func (c *Config) WorkerPortsBase() int {
 // WorkerPublicIP returns the public IP for the worker container
 func (c *Config) WorkerPublicIP() string {
 	if c == nil || c.DockerPublicIP == "" {
-		return "0.0.0.0"
+		return "127.0.0.1"
 	}
 	return c.DockerPublicIP
 }

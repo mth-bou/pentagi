@@ -8,8 +8,8 @@ import (
 	"github.com/distribution/reference"
 )
 
-// ImageSelectionModeFixed skips the model call and always uses the configured
-// pentest image. Any other value keeps the model choosing the image.
+// ImageSelectionModeFixed skips the model call and uses the configured pentest
+// image. Only the explicit "llm" mode delegates the choice to the model.
 const ImageSelectionModeFixed = "fixed"
 
 type imagePolicy struct {
@@ -20,12 +20,15 @@ type imagePolicy struct {
 }
 
 func newImagePolicy(cfg *config.Config, defaultImage string) imagePolicy {
-	policy := imagePolicy{fallback: normalizeImage(defaultImage)}
+	policy := imagePolicy{mode: ImageSelectionModeFixed, fallback: normalizeImage(defaultImage)}
 	if cfg == nil {
 		return policy
 	}
 
-	policy.mode = strings.ToLower(strings.TrimSpace(cfg.DockerImageSelectionMode))
+	// Dynamic image selection must be explicit; missing or mistyped modes fail closed.
+	if strings.EqualFold(strings.TrimSpace(cfg.DockerImageSelectionMode), "llm") {
+		policy.mode = "llm"
+	}
 	policy.pentest = normalizeImage(cfg.DockerDefaultImageForPentest)
 	for _, name := range strings.Split(cfg.DockerAllowedImages, ",") {
 		if name = normalizeImage(name); name != "" {

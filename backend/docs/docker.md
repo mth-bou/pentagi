@@ -109,7 +109,7 @@ The Docker client is configured through several environment variables defined in
 | `DOCKER_DEFAULT_IMAGE_FOR_TEST` | `vxcontrol/kali-linux:test` | Worker the startup test runs in, and the image it pulls into the sandbox to prove an agent could |
 | `DOCKER_PORTS_BASE` | `28000` | First host port of this instance's per-flow allocation window |
 | `DOCKER_NETWORK` | | Docker network for container communication (bridge mode) or `host` for host network mode |
-| `DOCKER_PUBLIC_IP` | `0.0.0.0` | Public IP for port binding (bridge mode only) |
+| `DOCKER_PUBLIC_IP` | `127.0.0.1` | Public IP for port binding (bridge mode only) |
 | `DOCKER_WORK_DIR` | | Custom work directory path on host |
 | `DOCKER_DEFAULT_IMAGE` | `debian:latest` | Fallback image if AI-selected image fails |
 | `DOCKER_DEFAULT_IMAGE_FOR_PENTEST` | `vxcontrol/kali-linux` | Default Docker image for penetration testing tasks |
@@ -130,7 +130,7 @@ type Config struct {
     DockerInsideCertPath  string `env:"DOCKER_INSIDE_CERT_PATH"`
 
     DockerNetwork                string `env:"DOCKER_NETWORK"`
-    DockerPublicIP               string `env:"DOCKER_PUBLIC_IP" envDefault:"0.0.0.0"`
+    DockerPublicIP               string `env:"DOCKER_PUBLIC_IP" envDefault:"127.0.0.1"`
     DockerWorkDir                string `env:"DOCKER_WORK_DIR"`
     DockerPortsBase              int    `env:"DOCKER_PORTS_BASE" envDefault:"28000"`
     DockerDefaultImage           string `env:"DOCKER_DEFAULT_IMAGE" envDefault:"debian:latest"`
