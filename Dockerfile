@@ -52,7 +52,7 @@ RUN pnpm run build -- \
 # ========================================
 # Stage 2: Backend Services Compilation
 # ========================================
-FROM golang:1.26-bookworm AS api-builder
+FROM golang:1.26.10-bookworm AS api-builder
 
 # Version injection arguments
 # "ce" is not a release number, so GetBinaryVersion reads it as "no release" and reports
