@@ -199,6 +199,10 @@ func New(
 	if err != nil {
 		return nil, err
 	}
+	httpClient, err = system.NewOllamaHTTPClient(cfg.OllamaServerURL, cfg.OllamaServerAPIKey, httpClient)
+	if err != nil {
+		return nil, err
+	}
 
 	baseModel := cfg.OllamaServerModel
 	serverURL := cfg.OllamaServerURL

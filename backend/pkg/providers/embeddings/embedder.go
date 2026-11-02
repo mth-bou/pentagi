@@ -11,6 +11,8 @@ import (
 	"pentagi/pkg/observability/langfuse"
 	"pentagi/pkg/system"
 
+	"github.com/ollama/ollama/envconfig"
+
 	"github.com/vxcontrol/langchaingo/embeddings"
 	"github.com/vxcontrol/langchaingo/embeddings/huggingface"
 	"github.com/vxcontrol/langchaingo/embeddings/jina"
@@ -160,6 +162,14 @@ func newOllama(cfg *config.Config, httpClient *http.Client) (embeddings.Embedder
 		"batch_size":      cfg.EmbeddingBatchSize,
 	}
 	serverURL, key := embeddingServer(cfg.EmbeddingURL, "", cfg.OllamaServerURL, cfg.OllamaServerAPIKey, "")
+	if serverURL == "" {
+		serverURL = envconfig.Host().String()
+	}
+	var err error
+	httpClient, err = system.NewOllamaHTTPClient(serverURL, key, httpClient)
+	if err != nil {
+		return nil, err
+	}
 	if serverURL != "" {
 		opts = append(opts, ollama.WithServerURL(serverURL))
 		metadata["url"] = serverURL
