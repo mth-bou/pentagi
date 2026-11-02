@@ -17,6 +17,7 @@ import (
 	"pentagi/pkg/templates"
 
 	"github.com/ollama/ollama/api"
+	"github.com/ollama/ollama/envconfig"
 	ollamamodel "github.com/ollama/ollama/types/model"
 	"github.com/vxcontrol/langchaingo/llms"
 	"github.com/vxcontrol/langchaingo/llms/ollama"
@@ -195,13 +196,20 @@ func New(
 	providerName provider.ProviderName,
 	providerConfig *pconfig.ProviderConfig,
 ) (provider.Provider, error) {
+	baseModel := cfg.OllamaServerModel
+	serverURL := cfg.OllamaServerURL
+	if serverURL == "" {
+		serverURL = envconfig.Host().String()
+	}
 	httpClient, err := system.GetHTTPClient(cfg)
 	if err != nil {
 		return nil, err
 	}
+	httpClient, err = system.NewOllamaHTTPClient(serverURL, cfg.OllamaServerAPIKey, httpClient)
+	if err != nil {
+		return nil, err
+	}
 
-	baseModel := cfg.OllamaServerModel
-	serverURL := cfg.OllamaServerURL
 	timeout := time.Duration(cfg.OllamaServerPullModelsTimeout) * time.Second
 	if timeout <= 0 {
 		timeout = defaultPullTimeout

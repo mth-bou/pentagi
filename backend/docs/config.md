@@ -422,17 +422,23 @@ These settings control how PentAGI interacts with Docker, which is used for term
 
 | Option                       | Environment Variable               | Default Value          | Description |
 | ---------------------------- | ---------------------------------- | ---------------------- | ----------- |
-| DockerInside                 | `DOCKER_INSIDE`                    | `false`                | Set to `true` if PentAGI runs inside Docker and needs to access the host Docker daemon. |
+| DockerInside                 | `DOCKER_INSIDE`                    | `false`                | Give worker containers access to a designated nested Docker daemon. This does not configure the main service's Docker API access. Forbidden in isolated/rootless-required mode. |
 | DockerNetAdmin               | `DOCKER_NET_ADMIN`                 | `false`                | Set to `true` to grant the primary container NET_ADMIN capability for advanced networking. |
-| DockerSocket                 | `DOCKER_SOCKET`                    | *(none)*               | Path to Docker socket for container management |
+| DockerWorkerCPUs | `DOCKER_WORKER_CPUS` | `2` | Per-worker CPU bandwidth ceiling. Zero selects the bounded default. |
+| DockerWorkerMemory | `DOCKER_WORKER_MEMORY` | `4294967296` | Per-worker RAM ceiling in bytes; swap is disabled. |
+| DockerWorkerPidsLimit | `DOCKER_WORKER_PIDS_LIMIT` | `512` | Per-worker process ceiling; unlimited negative values are rejected. |
+| DockerWorkerAllowPrivilegeEscalation | `DOCKER_WORKER_ALLOW_PRIVILEGE_ESCALATION` | `false` | Explicit SUID/sudo lab opt-in; otherwise no-new-privileges is required. |
+| DockerEgressMode | `DOCKER_EGRESS_MODE` | `unrestricted` | Compatibility fallback. Example env and hardened profile select `isolated`; see [hardening guide](fork-hardening.md). |
+| DockerRequireRootless | `DOCKER_REQUIRE_ROOTLESS` | `false` | Require the control endpoint to be a rootless daemon with systemd/cgroup v2 resource delegation. Forced on by hardened Compose profile. |
+| DockerSocket                 | `DOCKER_SOCKET`                    | *(none)*               | Optional host socket given to workers when DockerInside is enabled; main service access uses DOCKER_HOST. |
 | DockerInsideHost             | `DOCKER_INSIDE_HOST`               | *(none)*               | Docker daemon endpoint given to worker containers; also disables host-socket autodetection. See [Worker Docker Access](#worker-docker-access-docker_inside_) |
 | DockerInsideTLSVerify        | `DOCKER_INSIDE_TLS_VERIFY`         | *(none)*               | TLS verification for the worker container's Docker connection |
 | DockerInsideCertPath         | `DOCKER_INSIDE_CERT_PATH`          | *(none)*               | TLS certificate directory **on the worker node**, mounted read-only into worker containers |
 | DockerInsidePolicyTests      | `DOCKER_INSIDE_POLICY_TESTS`       | `false`                | Test the sandbox once at startup: the daemon must be separate from PentAGI's and must refuse host-escape requests. Its only effect is whether agents get Docker — a failure turns the sandbox off and PentAGI still starts. Off by default |
 | DockerDefaultImageForTest    | `DOCKER_DEFAULT_IMAGE_FOR_TEST`    | `vxcontrol/kali-linux:test` | Worker the startup test runs in, and the image it pulls into the sandbox |
 | DockerNetwork                | `DOCKER_NETWORK`                   | *(none)*               | Docker network name for bridge mode, or `host` for host network mode. See network modes below. |
-| DockerPublicIP               | `DOCKER_PUBLIC_IP`                 | `0.0.0.0`              | Public IP address for Docker containers' port bindings (bridge mode only) |
-| DockerWorkDir                | `DOCKER_WORK_DIR`                  | *(none)*               | Custom working directory inside Docker containers |
+| DockerPublicIP               | `DOCKER_PUBLIC_IP`                 | `127.0.0.1`              | Public IP address for Docker containers' port bindings (bridge mode only) |
+| DockerWorkDir                | `DOCKER_WORK_DIR`                  | *(none)*               | Host directory backing worker /work. Forbidden in isolated/rootless-required mode, which uses named volumes. |
 | DockerDefaultImage           | `DOCKER_DEFAULT_IMAGE`             | `debian:latest`        | Default Docker image for containers when specific images fail |
 | DockerDefaultImageForPentest | `DOCKER_DEFAULT_IMAGE_FOR_PENTEST` | `vxcontrol/kali-linux` | Default Docker image for penetration testing tasks |
 | TerminalToolTimeout          | `TERMINAL_TOOL_TIMEOUT`            | `1200`                 | Default execution timeout in seconds applied when an agent requests `timeout=0` or a negative value. Accepted range: `1`–`10800` (3 hours). Values `<= 0` or above `10800` are clamped to the 3-hour maximum. Negative values are treated identically to `0`. |
@@ -542,7 +548,7 @@ The Docker settings are primarily used in `pkg/docker/client.go` which implement
 
 - **DockerPublicIP**: Defines the IP address to bind container ports to, making services accessible:
   ```go
-  publicIP := cfg.DockerPublicIP
+  publicIP := cfg.WorkerPublicIP()
 
   // Used when setting up port bindings
   hostConfig.PortBindings[natPort] = []nat.PortBinding{

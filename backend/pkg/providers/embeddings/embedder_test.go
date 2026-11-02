@@ -282,7 +282,7 @@ func TestEmbedder_EmbeddingServer_TakesTheServerAndKeyAsOnePair(t *testing.T) {
 		return &cfg
 	}
 	ollamaChat := func(cfg config.Config) *config.Config {
-		cfg.OllamaServerURL, cfg.OllamaServerAPIKey, cfg.EmbeddingModel = "http://keyed-ollama:11434", "chat-key", "nomic-embed-text"
+		cfg.OllamaServerURL, cfg.OllamaServerAPIKey, cfg.EmbeddingModel = "https://keyed-ollama:11434", "chat-key", "nomic-embed-text"
 		return &cfg
 	}
 
@@ -342,7 +342,7 @@ func TestEmbedder_EmbeddingServer_TakesTheServerAndKeyAsOnePair(t *testing.T) {
 		},
 		{
 			name: "ollama on the chat door's own server takes its key", build: newOllama,
-			cfg: ollamaChat(config.Config{EmbeddingURL: "http://keyed-ollama:11434"}), host: "keyed-ollama:11434",
+			cfg: ollamaChat(config.Config{EmbeddingURL: "https://keyed-ollama:11434"}), host: "keyed-ollama:11434",
 			authorization: "Bearer chat-key",
 		},
 	}

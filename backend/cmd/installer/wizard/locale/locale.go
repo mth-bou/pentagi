@@ -1964,8 +1964,8 @@ Only used when Docker Access and its Isolation Self-Test are enabled. Default: v
 
 	ToolsDockerImageSelectionModeHelp = `Image Selection Mode controls how a worker's container image is chosen.
 
-• llm — the agent picks the image for each task (default)
-• fixed — always use the Pentesting Image, skipping the model's choice
+• fixed — always use the Pentesting Image, skipping the model's choice (default)
+• llm — explicitly let the agent pick the image for each task
 
 Use 'fixed' to pin every worker to one vetted image.`
 

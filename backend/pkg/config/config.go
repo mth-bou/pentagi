@@ -33,9 +33,13 @@ type Config struct {
 	LicenseKey     string `env:"LICENSE_KEY"`
 
 	// === Container Runtime Configuration ===
-	DockerInside   bool   `env:"DOCKER_INSIDE" envDefault:"false"`
-	DockerNetAdmin bool   `env:"DOCKER_NET_ADMIN" envDefault:"false"`
-	DockerSocket   string `env:"DOCKER_SOCKET"`
+	DockerInside                         bool    `env:"DOCKER_INSIDE" envDefault:"false"`
+	DockerNetAdmin                       bool    `env:"DOCKER_NET_ADMIN" envDefault:"false"`
+	DockerSocket                         string  `env:"DOCKER_SOCKET"`
+	DockerWorkerCPUs                     float64 `env:"DOCKER_WORKER_CPUS" envDefault:"2"`
+	DockerWorkerMemory                   int64   `env:"DOCKER_WORKER_MEMORY" envDefault:"4294967296"`
+	DockerWorkerPidsLimit                int64   `env:"DOCKER_WORKER_PIDS_LIMIT" envDefault:"512"`
+	DockerWorkerAllowPrivilegeEscalation bool    `env:"DOCKER_WORKER_ALLOW_PRIVILEGE_ESCALATION" envDefault:"false"`
 
 	// DOCKER_INSIDE_* describe how a worker container reaches a Docker daemon when
 	// DOCKER_INSIDE is enabled. They mirror the DOCKER_HOST / DOCKER_TLS_VERIFY /
@@ -57,10 +61,12 @@ type Config struct {
 	// deployment without one every worker would be refused. Operators who run the
 	// separate-daemon arrangement of examples/guides/worker_node.md turn it on to
 	// have that arrangement proven rather than assumed.
-	DockerInsidePolicyTests bool `env:"DOCKER_INSIDE_POLICY_TESTS" envDefault:"false"`
+	DockerInsidePolicyTests bool   `env:"DOCKER_INSIDE_POLICY_TESTS" envDefault:"false"`
+	DockerEgressMode        string `env:"DOCKER_EGRESS_MODE" envDefault:"unrestricted"`
+	DockerRequireRootless   bool   `env:"DOCKER_REQUIRE_ROOTLESS" envDefault:"false"`
 
 	DockerNetwork                string `env:"DOCKER_NETWORK"`
-	DockerPublicIP               string `env:"DOCKER_PUBLIC_IP" envDefault:"0.0.0.0"`
+	DockerPublicIP               string `env:"DOCKER_PUBLIC_IP" envDefault:"127.0.0.1"`
 	DockerWorkDir                string `env:"DOCKER_WORK_DIR"`
 	DockerPortsBase              int    `env:"DOCKER_PORTS_BASE" envDefault:"28000"`
 	DockerDefaultImage           string `env:"DOCKER_DEFAULT_IMAGE" envDefault:"debian:latest"`
@@ -70,7 +76,7 @@ type Config struct {
 	// and the image it pulls into the sandbox to prove an agent could. It is a
 	// small image on purpose: the check pays for it on every start.
 	DockerDefaultImageForTest string `env:"DOCKER_DEFAULT_IMAGE_FOR_TEST" envDefault:"vxcontrol/kali-linux:test"`
-	DockerImageSelectionMode  string `env:"DOCKER_IMAGE_SELECTION_MODE" envDefault:"llm"`
+	DockerImageSelectionMode  string `env:"DOCKER_IMAGE_SELECTION_MODE" envDefault:"fixed"`
 	DockerAllowedImages       string `env:"DOCKER_ALLOWED_IMAGES"`
 	LLMFallbackProvider       string `env:"LLM_FALLBACK_PROVIDER"`
 	TerminalToolTimeout       int    `env:"TERMINAL_TOOL_TIMEOUT" envDefault:"1200"`
@@ -359,6 +365,12 @@ func NewConfig() (*Config, error) {
 	if err := config.ValidateTenantID(); err != nil {
 		return nil, err
 	}
+	if err := config.ValidateWorkerLimits(); err != nil {
+		return nil, err
+	}
+	if err := config.ValidateDockerBoundary(); err != nil {
+		return nil, err
+	}
 
 	ensureInstallationID(&config)
 	ensureLicenseKey(&config)
@@ -415,7 +427,7 @@ func (c *Config) WorkerPortsBase() int {
 // WorkerPublicIP returns the public IP for the worker container
 func (c *Config) WorkerPublicIP() string {
 	if c == nil || c.DockerPublicIP == "" {
-		return "0.0.0.0"
+		return "127.0.0.1"
 	}
 	return c.DockerPublicIP
 }

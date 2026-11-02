@@ -74,6 +74,7 @@ const (
 )
 
 type dockerClient struct {
+	workerConfig         *config.Config
 	db                   database.Querier
 	logger               *logrus.Logger
 	dataDir              string
@@ -131,6 +132,15 @@ func GetPrimaryContainerPorts(portsBase int, flowID int64) []int {
 }
 
 func NewDockerClient(ctx context.Context, db database.Querier, cfg *config.Config) (DockerClient, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("docker configuration is required")
+	}
+	if err := cfg.ValidateWorkerLimits(); err != nil {
+		return nil, err
+	}
+	if err := cfg.ValidateDockerBoundary(); err != nil {
+		return nil, err
+	}
 	cli, err := client.New(client.FromEnv)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize docker client: %w", err)
@@ -141,6 +151,9 @@ func NewDockerClient(ctx context.Context, db database.Querier, cfg *config.Confi
 		return nil, fmt.Errorf("failed to get docker info: %w", err)
 	}
 	info := infoResult.Info
+	if err := validateControlDaemon(cfg, info); err != nil {
+		return nil, err
+	}
 
 	// Resolve which host socket (if any) gets bind-mounted into worker containers.
 	// Autodetection is skipped when DOCKER_INSIDE_HOST designates a daemon
@@ -153,7 +166,7 @@ func NewDockerClient(ctx context.Context, db database.Querier, cfg *config.Confi
 	inside := cfg.DockerInside
 	logWorkerDaemonIsolation(ctx, cfg, cli)
 	netName := cfg.DockerNetwork
-	publicIP := cfg.DockerPublicIP
+	publicIP := cfg.WorkerPublicIP()
 	defImage := strings.ToLower(cfg.DockerDefaultImage)
 	if defImage == "" {
 		defImage = defaultImage
@@ -169,13 +182,25 @@ func NewDockerClient(ctx context.Context, db database.Querier, cfg *config.Confi
 	}
 
 	hostDir := getHostDataDir(ctx, cli, dataDir, cfg.DockerWorkDir)
+	if cfg.DockerRequireRootless || cfg.WorkerEgressMode() == "isolated" {
+		hostDir = "" // only per-worker named volumes, no autodetected host paths
+	}
 
 	// ensure network exists if configured
-	if err := ensureDockerNetwork(ctx, cli, netName); err != nil {
-		return nil, fmt.Errorf("failed to ensure docker network %s: %w", netName, err)
+	var networkErr error
+	if cfg.WorkerEgressMode() == "isolated" {
+		networkErr = verifyIsolatedNetwork(ctx, cli, netName)
+	} else {
+		networkErr = ensureDockerNetwork(ctx, cli, netName)
+	}
+	if networkErr != nil {
+		return nil, fmt.Errorf("failed to ensure docker network %s: %w", netName, networkErr)
 	}
 
 	logger := logrus.StandardLogger()
+	if cfg.WorkerEgressMode() == "unrestricted" {
+		logger.Warn("worker egress is unrestricted; use isolated mode and an explicit lab network to restrict target access")
+	}
 	logger.WithFields(logrus.Fields{
 		"docker_name":        info.Name,
 		"docker_arch":        info.Architecture,
@@ -190,6 +215,7 @@ func NewDockerClient(ctx context.Context, db database.Querier, cfg *config.Confi
 	}).Debug("Docker client initialized")
 
 	dockerCli := &dockerClient{
+		workerConfig:         cfg,
 		db:                   db,
 		client:               cli,
 		dataDir:              dataDir,
@@ -249,6 +275,21 @@ func (dc *dockerClient) RunContainer(
 ) (database.Container, error) {
 	if config == nil {
 		return database.Container{}, fmt.Errorf("no config found for container %s", containerName)
+	}
+	if hostConfig == nil {
+		hostConfig = &container.HostConfig{}
+	}
+	if err := applyWorkerSecurity(dc.workerConfig, hostConfig); err != nil {
+		return database.Container{}, err
+	}
+	isolated := dc.workerConfig.WorkerEgressMode() == "isolated"
+	if isolated {
+		if err := dc.workerConfig.ValidateDockerBoundary(); err != nil {
+			return database.Container{}, err
+		}
+		if err := verifyIsolatedNetwork(ctx, dc.client, dc.network); err != nil {
+			return database.Container{}, err
+		}
 	}
 
 	workDir := filepath.Join(dc.dataDir, fmt.Sprintf(containerLocalCwdTemplate, flowID))
@@ -365,20 +406,6 @@ func (dc *dockerClient) RunContainer(
 
 	dc.applyWorkerDockerAccess(config, hostConfig)
 
-	// no-new-privileges was evaluated and deliberately not applied: the capability
-	// bounding set in tools.go Prepare already caps what any process can gain, so
-	// it added no protection beyond that (and none against issue #337) while
-	// breaking SUID/SGID privesc testing and sudo/su. See "Capability Management"
-	// in docker.md for the full rationale.
-
-	// Cap fork-bomb / resource-exhaustion risk at a bounded limit.
-	// 2048 pids is generous for most pentest workloads (nmap, hydra, parallel scans).
-	// Callers can override by setting hostConfig.PidsLimit before calling RunContainer.
-	if hostConfig.PidsLimit == nil {
-		pidsLimit := int64(2048)
-		hostConfig.PidsLimit = &pidsLimit
-	}
-
 	hostConfig.LogConfig = container.LogConfig{
 		Type: "json-file",
 		Config: map[string]string{
@@ -389,7 +416,17 @@ func (dc *dockerClient) RunContainer(
 
 	// Configure network mode and port bindings
 	var networkingConfig *network.NetworkingConfig
-	if dc.network == "host" {
+	if isolated {
+		hostConfig.NetworkMode = container.NetworkMode(dc.network)
+		hostConfig.PortBindings = nil
+		hostConfig.PublishAllPorts = false
+		hostConfig.DNS = []netip.Addr{netip.MustParseAddr("127.0.0.1")}
+		hostConfig.DNSSearch = nil
+		hostConfig.DNSOptions = nil
+		hostConfig.ExtraHosts = nil
+		hostConfig.Sysctls = map[string]string{"net.ipv6.conf.all.disable_ipv6": "1"}
+		networkingConfig = &network.NetworkingConfig{EndpointsConfig: map[string]*network.EndpointSettings{dc.network: {}}}
+	} else if dc.network == "host" {
 		// Host network mode: container uses host network stack directly
 		// No port bindings needed as container has direct access to host interfaces
 		hostConfig.NetworkMode = container.NetworkMode("host")
@@ -987,6 +1024,11 @@ func (dc *dockerClient) IsContainerRunning(ctx context.Context, containerID stri
 	if inspection.State.Health != nil && inspection.State.Health.Status != "" {
 		isOperational = isOperational && inspection.State.Health.Status != "unhealthy"
 	}
+	if isOperational {
+		if err := dc.validateReusableWorker(ctx, inspection); err != nil {
+			return false, fmt.Errorf("existing worker is incompatible with the current security policy; stop and recreate it before reuse: %w", err)
+		}
+	}
 
 	return isOperational, nil
 }
@@ -1000,6 +1042,9 @@ func (dc *dockerClient) ContainerExecCreate(
 	container string,
 	config client.ExecCreateOptions,
 ) (client.ExecCreateResult, error) {
+	if config.Privileged {
+		return client.ExecCreateResult{}, fmt.Errorf("privileged worker exec is not allowed")
+	}
 	return dc.client.ExecCreate(ctx, container, config)
 }
 

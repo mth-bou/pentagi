@@ -109,7 +109,7 @@ The Docker client is configured through several environment variables defined in
 | `DOCKER_DEFAULT_IMAGE_FOR_TEST` | `vxcontrol/kali-linux:test` | Worker the startup test runs in, and the image it pulls into the sandbox to prove an agent could |
 | `DOCKER_PORTS_BASE` | `28000` | First host port of this instance's per-flow allocation window |
 | `DOCKER_NETWORK` | | Docker network for container communication (bridge mode) or `host` for host network mode |
-| `DOCKER_PUBLIC_IP` | `0.0.0.0` | Public IP for port binding (bridge mode only) |
+| `DOCKER_PUBLIC_IP` | `127.0.0.1` | Public IP for port binding (bridge mode only) |
 | `DOCKER_WORK_DIR` | | Custom work directory path on host |
 | `DOCKER_DEFAULT_IMAGE` | `debian:latest` | Fallback image if AI-selected image fails |
 | `DOCKER_DEFAULT_IMAGE_FOR_PENTEST` | `vxcontrol/kali-linux` | Default Docker image for penetration testing tasks |
@@ -130,7 +130,7 @@ type Config struct {
     DockerInsideCertPath  string `env:"DOCKER_INSIDE_CERT_PATH"`
 
     DockerNetwork                string `env:"DOCKER_NETWORK"`
-    DockerPublicIP               string `env:"DOCKER_PUBLIC_IP" envDefault:"0.0.0.0"`
+    DockerPublicIP               string `env:"DOCKER_PUBLIC_IP" envDefault:"127.0.0.1"`
     DockerWorkDir                string `env:"DOCKER_WORK_DIR"`
     DockerPortsBase              int    `env:"DOCKER_PORTS_BASE" envDefault:"28000"`
     DockerDefaultImage           string `env:"DOCKER_DEFAULT_IMAGE" envDefault:"debian:latest"`
@@ -400,7 +400,7 @@ containerConfig := &container.Config{
     },
 }
 
-pidsLimit := int64(2048) // fork-bomb guard, default when the caller does not set one
+pidsLimit := int64(512) // per-worker ceiling, see fork-hardening.md
 
 hostConfig := &container.HostConfig{
     CapDrop: []string{"ALL"},                    // Explicit allow-list below, see Capability Management
@@ -524,11 +524,11 @@ Why this exact set, rather than a minimal `NET_RAW`-only list:
 
 Docker's default set minus `MKNOD`, plus `NET_ADMIN`, is exactly the `allowed_caps` whitelist already vetted in `authz.rego` for nested dind containers running the same kind of pentest workload — the two are kept intentionally consistent at that shared baseline. `SYS_PTRACE` is the one place the primary container's allow-list goes further than `authz.rego`'s: it is not offered to nested dind containers (an agent there can request arbitrary `containers/create` calls, and the dind threat model does not special-case debugging), but the primary worker container is created solely by PentAGI itself with a fixed capability list, so granting it here does not expand what an agent can ask for.
 
-An earlier revision of this container also forced `no-new-privileges:true` via `SecurityOpt`, intended as defense-in-depth against setuid/file-capability escalation. It was removed: the capability bounding set above already caps what any process can ever gain regardless of setuid, so the flag added no protection beyond the allow-list while unconditionally breaking SUID/SGID privilege-escalation testing and `sudo`/`su` from a non-root shell — both routine penetration-testing workflows.
+This fork requires `no-new-privileges:true` by default to prevent setuid/file-capability escalation within the remaining capability boundary. SUID/SGID and non-root `sudo`/`su` testing require the explicit `DOCKER_WORKER_ALLOW_PRIVILEGE_ESCALATION=true` opt-in. Isolated egress also removes `NET_RAW` and forbids `NET_ADMIN`; use TCP-connect scans and prebuilt tool images. See [the fork hardening guide](fork-hardening.md) for compatibility and migration requirements.
 
 #### Resource Limits
-- **PidsLimit**: Defaults to 2048 when the caller does not set one — a cheap fork-bomb / resource-exhaustion guard, generous enough for parallel scans (nmap, hydra). Mirrors the same default used for the dind daemon in the [Worker Node Setup](../../examples/guides/worker_node.md) guide.
-- **Memory/CPU**: Controlled via standard `HostConfig` resource fields when set by the caller.
+- **PidsLimit**: Defaults to 512. `DOCKER_WORKER_PIDS_LIMIT` sets the per-worker ceiling; callers may only lower it.
+- **Memory/CPU**: Defaults to 4 GiB RAM, no swap and 2 CPUs. `DOCKER_WORKER_MEMORY` (bytes) and `DOCKER_WORKER_CPUS` configure these ceilings. The daemon must report working memory/swap/CPU/PID resource controllers. Running workers are checked against the current limits before reuse.
 
 #### Process Isolation
 - **User Namespaces**: Containers run with isolated user space

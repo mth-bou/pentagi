@@ -1,5 +1,8 @@
 # PentAGI
 
+> This fork contains security changes that are not in upstream container images.
+> Read [FORK_SECURITY.md](FORK_SECURITY.md) before building or deploying it.
+
 <div align="center" style="font-size: 1.5em; margin: 20px 0;">
     <strong>P</strong>enetration testing <strong>A</strong>rtificial <strong>G</strong>eneral <strong>I</strong>ntelligence
 </div>
@@ -896,7 +899,7 @@ For multi-user setups, an authenticated administrator can manage local users thr
 By default, the PentAGI web interface and the other compose services bind to `127.0.0.1` (localhost only) for security. To access PentAGI from other machines on your network, you need to configure external access.
 
 > [!IMPORTANT]
-> Flow sandboxes are not bound to localhost. Each flow publishes two TCP ports for out-of-band callbacks such as reverse shells, taken from the 2000-port window that starts at `DOCKER_PORTS_BASE` (`28000`–`29999` by default), on `DOCKER_PUBLIC_IP` — `0.0.0.0` by default, that is every interface of the Docker host. Docker routes published ports around `ufw` rules and lets them through `firewalld` with its own `docker` zone, so restrict this range with a firewall in front of the host or, with Docker's default iptables backend, with rules in the `DOCKER-USER` chain. With `DOCKER_NETWORK=host`, sandboxes share the host's network stack, so their listeners are exposed without any port mapping.
+> Flow callback ports bind to `127.0.0.1` by default in this fork. Each flow publishes two TCP ports from the 2000-port window starting at `DOCKER_PORTS_BASE` (`28000`–`29999` by default). Remote callbacks require an explicit `DOCKER_PUBLIC_IP` reachable from the test target; prefer a dedicated lab interface. Setting `0.0.0.0` exposes those ports on every interface. Docker routes published ports around `ufw` rules, so an external firewall or appropriate `DOCKER-USER` rules may still be required. `DOCKER_NETWORK=host` bypasses port bindings and this loopback protection. These settings do not restrict outgoing traffic. See [fork security changes](FORK_SECURITY.md).
 
 #### Configuration Steps
 
@@ -3046,7 +3049,7 @@ Make sure `PUBLIC_URL` matches the externally accessible HTTPS address of your P
 
 ### Docker Image Configuration
 
-PentAGI allows you to configure Docker image selection for executing various tasks. The system automatically chooses the most appropriate image based on the task type, but you can constrain this selection by specifying your preferred images:
+PentAGI uses the configured pentest worker image by default in this fork. Model-selected images require an explicit opt-in:
 
 | Variable                           | Default                | Description                                                 |
 | ---------------------------------- | ---------------------- | ----------------------------------------------------------- |
@@ -3054,14 +3057,14 @@ PentAGI allows you to configure Docker image selection for executing various tas
 | `DOCKER_DEFAULT_IMAGE`             | `debian:latest`        | Default Docker image for general tasks and ambiguous cases  |
 | `DOCKER_DEFAULT_IMAGE_FOR_PENTEST` | `vxcontrol/kali-linux` | Default Docker image for security/penetration testing tasks |
 | `DOCKER_ALLOWED_IMAGES`            | empty                  | Comma-separated allow-list the selected image must belong to |
-| `DOCKER_IMAGE_SELECTION_MODE`      | `llm`                  | `llm` lets the model pick the image, `fixed` always uses the pentest image |
+| `DOCKER_IMAGE_SELECTION_MODE`      | `fixed`                | `llm` explicitly lets the model pick the image; otherwise the pentest image is used |
 
 `PENTAGI_IMAGE` changes the image used by the main `pentagi` service in `docker-compose.yml`. The `DOCKER_DEFAULT_IMAGE` and `DOCKER_DEFAULT_IMAGE_FOR_PENTEST` variables only affect automatic worker image selection for task execution inside PentAGI. They do not rewrite the rest of the Compose stack, so services such as `pgvector`, `scraper`, and the optional `graphiti` stack still use the image references defined in the compose files.
 
-`DOCKER_DEFAULT_IMAGE` and `DOCKER_DEFAULT_IMAGE_FOR_PENTEST` are suggestions the model receives in the image selection prompt, not limits: on their own they do not stop a model from answering with some other image. Two settings turn them into limits:
+With `DOCKER_IMAGE_SELECTION_MODE=llm`, the default image names are suggestions rather than limits. The allow-list constrains that opt-in mode:
 
-- **`DOCKER_ALLOWED_IMAGES`** restricts the choice. An answer outside the list is discarded and the pentest image is used instead. An entry without a tag admits any tag of that repository, so `vxcontrol/kali-linux` also admits `vxcontrol/kali-linux:2026.1`. While the list is empty the model may pick any image, which is the default behaviour.
-- **`DOCKER_IMAGE_SELECTION_MODE=fixed`** removes the choice altogether: the flow always runs in `DOCKER_DEFAULT_IMAGE_FOR_PENTEST` and no model call is made. Use it when weaker or local models answer with the wrong environment.
+- **`DOCKER_ALLOWED_IMAGES`** restricts model-selected images. An answer outside the list is discarded and the configured pentest image is used instead. A bare repository name such as `vxcontrol/kali-linux` admits its tags and digests; an entry with a tag or digest requires that exact reference. A digest entry never authorizes another digest or a mutable tag of the same repository. An empty allow-list imposes no restriction in `llm` mode. The operator must also trust the configured fallback image.
+- **`DOCKER_IMAGE_SELECTION_MODE=fixed`** keeps the configured `DOCKER_DEFAULT_IMAGE_FOR_PENTEST` and makes no image-selection model call. Empty or unrecognized modes also keep this safe default. A fixed mutable tag is still mutable; pin the configured image by digest when content identity matters.
 
 Regardless of these settings, an answer that is not a usable image reference never reaches Docker: the flow falls back to the pentest image and the rejected answer is logged.
 
